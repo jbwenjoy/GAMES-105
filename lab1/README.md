@@ -17,7 +17,7 @@ pip install panda3d
 
 完成后可以运行`task0_test_environment.py`，你将会看到一个T-pose的人形角色。可以通过鼠标左右中键操作相机视角。
 
-**注意：** `scipy`的`from_euler`里`xyz`大小写代表不同的旋转方式，本次作业里你需要一律使用大写的`XYZ`。
+**注意：** `scipy`的`from_euler`里`xyz`大小写代表不同的旋转方式（大写内旋，小写外旋），本次作业里你需要一律使用大写的`XYZ`（内旋）。
 
 ### 2. 一些角色动画领域的术语和Scipy-Rotation库简介(可跳过)
 
