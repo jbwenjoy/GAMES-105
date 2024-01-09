@@ -47,25 +47,25 @@ def part1_calculate_T_pose(bvh_file_path):
         line = [name for name in lines[i].split()]
         if line[0] == "HIERARCHY":
             continue
-        elif line[0] == "MOTION":
+        if line[0] == "MOTION":
             break
-        elif line[0] == "CHANNELS":
+        if line[0] == "CHANNELS":
             joint_channel_count.append(int(line[1]))
             joint_channel.append(line[2:len(line)])
-        elif line[0] == "ROOT":
+        if line[0] == "ROOT":
             joint_name.append(line[-1])
             joint_parent.append(-1)
-        elif line[0] == "JOINT":
+        if line[0] == "JOINT":
             joint_name.append(line[-1])
             joint_parent.append(joint_name.index(joint_reading_stack[-1]))
-        elif line[0] == "End":
+        if line[0] == "End":
             joint_name.append(joint_name[-1] + "_end")
             joint_parent.append(joint_name.index(joint_reading_stack[-1]))
-        elif line[0] == "OFFSET":
+        if line[0] == "OFFSET":
             joint_offset.append([float(line[1]), float(line[2]), float(line[3])])
-        elif line[0] == "{":
+        if line[0] == "{":
             joint_reading_stack.append(joint_name[-1])
-        elif line[0] == "}":
+        if line[0] == "}":
             joint_reading_stack.pop()
     joint_offset = np.array(joint_offset).reshape(-1, 3)
 
@@ -88,39 +88,34 @@ def part2_forward_kinematics(joint_names, joint_parents, joint_offsets, motion_d
     joint_orientations = []
 
     frame_motion_data = motion_data[frame_id]
-    frame_motion_data = frame_motion_data.reshape(-1, 3)
+    frame_motion_data = frame_motion_data.reshape(-1, 3)  # shape: (M, 3)
 
-    quat = R.from_euler('XYZ', frame_motion_data, degrees=True).as_quat()
-
-    # 处理 end 节点
-    end_joints = []
-    # 记录 end 节点 index
-    for i in joint_names:
-        if "end" in i:
-            end_joints.append(joint_names.index(i))
-    # 为 end 节点插入四元数
-    for i in end_joints:
-        quat = np.insert(quat, i, [0, 0, 0, 1], axis=0)
+    # 梳理每个节点的局部旋转，包含 end 节点
+    joint_local_rotation = []
+    end_joint_count = 0
+    for i in range(len(joint_names)):
+        if '_end' in joint_names[i]:
+            joint_local_rotation.append(np.zeros(3))
+            end_joint_count += 1
+        else:
+            joint_local_rotation.append(frame_motion_data[i - end_joint_count + 1, :])  # 根节点没有旋转，所以从第二个开始
+    # temp = np.array(joint_local_rotation)
 
     # 由根节点开始，遍历计算旋转和位置
     # 由于数组顺序的特殊性，parent 一定会比 child 先更新，从根节点开始走完一次即可确保完成所有节点的计算
-    # Q_{i} = Q_{i-1} * R_{i}
-    # p_{i+1} = p_{i} + Q_{i} * L_{i}
-    for joint_index in range(len(joint_parents)):
-        joint_parent = joint_parents[joint_index]
-        joint_offset = joint_offsets[joint_index]
-
-        if joint_parent == -1:  # 根节点
-            joint_positions.append(frame_motion_data[0])
-            joint_orientations.append(quat[0])
+    for i in range(len(joint_names)):
+        if joint_parents[i] == -1:  # 根节点
+            joint_position = frame_motion_data[0]
+            joint_orientation = R.from_euler('XYZ', joint_local_rotation[i], degrees=True).as_quat()
         else:
-            quat_current = R.from_quat(quat[joint_index])  # R_{i}
-            quat_parent = R.from_quat(quat[joint_parent])  # Q_{i-1}
-            joint_orientations.append(R.as_quat(quat_current * quat_parent))  # Q_{i} = Q_{i-1} * R_{i}
+            Q_parent = R.from_quat(joint_orientations[joint_parents[i]])
+            R_current = R.from_euler('XYZ', joint_local_rotation[i], degrees=True)
+            joint_orientation = (R_current * Q_parent).as_quat()  # Q_{i} = Q_{i-1} * R_{i}
+            joint_position = joint_positions[joint_parents[i]] + R.from_quat(joint_orientations[joint_parents[i]]).apply(joint_offsets[i])  # p_{i+1} = p_{i} + Q_{i} * L_{i}
 
-            joint_orientations_quat = R.from_quat(joint_orientations)  # 用于计算偏移量的四元数
-            offset_rotation = joint_orientations_quat[joint_parent].apply(joint_offset)  # Q_{i} * L_{i}
-            joint_positions.append(joint_positions[joint_parent] + offset_rotation)  # p_{i+1} = p_{i} + Q_{i} * L_{i}
+        joint_orientations.append(np.array(joint_orientation))
+        joint_positions.append(np.array(joint_position))
+
     # list 转 numpy 数组
     joint_positions = np.array(joint_positions)
     joint_orientations = np.array(joint_orientations)
